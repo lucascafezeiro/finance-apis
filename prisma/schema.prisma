@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./database-fin.db"
+}
+
+model Company {
+  id    Int    @id @default(autoincrement())
+  name  String
+  users User[]
+  categories Category[]
+  transactions Transaction[]
+}
+
+model User {
+  id          Int    @id @default(autoincrement())
+  name        String
+  email       String @unique
+  password    String
+  company_id  Int
+  first_time  Boolean @default(true)
+
+  company     Company @relation(fields: [company_id], references: [id])
+  transactions Transaction[] @relation("UserTransactions")
+}
+
+model Category {
+  id         Int    @id @default(autoincrement())
+  name       String
+  company_id Int
+  active     Boolean @default(false)
+
+  company    Company @relation(fields: [company_id], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  description String
+  category_id Int
+  value       Float
+  type        String
+  date        DateTime
+  company_id  Int
+  created_by  Int
+  created_at  DateTime @default(now())
+
+  category    Category @relation(fields: [category_id], references: [id])
+  company     Company  @relation(fields: [company_id], references: [id])
+  creator     User     @relation("UserTransactions", fields: [created_by], references: [id])
+}
