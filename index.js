@@ -71,7 +71,7 @@ app.post('/logout', authenticateToken, (req, res) => {
 });
 
 // Company APIs.
-app.post('/company', authenticateToken, async (req, res) => {
+app.post('/company', async (req, res) => {
   const { name, currency, language } = req.body;
 
   const company = await prisma.company.create({
@@ -93,7 +93,7 @@ app.get('/company', authenticateToken, async (req, res) => {
   res.json(company);
 });
 
-app.put('/company', authenticateToken, async (req, res) => {
+app.put('/company', async (req, res) => {
   const { companyId } = req.user;
   const { name, currency, language } = req.body;
 
@@ -119,9 +119,9 @@ app.put('/change-password/:user_id', authenticateToken, async (req, res) => {
   res.json({ message: 'Password updated' });
 });
 
-app.post('/user', authenticateToken, async (req, res) => {
+app.post('/user', async (req, res) => {
   const { name, email, password } = req.body;
-  const { companyId } = req.user;
+  const companyId = 1
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
@@ -229,4 +229,3 @@ app.put('/transaction/:transaction_id', authenticateToken, async (req, res) => {
 app.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
 });
-

@@ -1,7 +1,9 @@
 -- CreateTable
 CREATE TABLE "Company" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "name" TEXT NOT NULL
+    "name" TEXT NOT NULL,
+    "currency" TEXT NOT NULL,
+    "language" TEXT NOT NULL
 );
 
 -- CreateTable

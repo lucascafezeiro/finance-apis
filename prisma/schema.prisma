@@ -1,19 +1,20 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "./generated"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./database-fin.db"
+  url      = "file:./finance.db"
 }
 
 model Company {
-  id    Int    @id @default(autoincrement())
-  name  String
-  users User[]
-  categories Category[]
-  transactions Transaction[]
+  id            Int    @id @default(autoincrement())
+  name          String
+  currency      String
+  language      String
+  users         User[]
+  categories    Category[]
+  transactions  Transaction[]
 }
 
 model User {
