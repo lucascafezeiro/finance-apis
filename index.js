@@ -1,12 +1,15 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const app = express();
 
 app.use(express.json());
+
+app.use(cors());
 
 // Middleware to handle blacklisted tokens
 let blacklistedTokens = new Set();
@@ -119,6 +122,18 @@ app.put('/change-password/:user_id', authenticateToken, async (req, res) => {
   res.json({ message: 'Password updated' });
 });
 
+app.get('/users', authenticateToken, async (req, res) => {
+  const { companyId } = req.user;
+  const users = await prisma.user.findMany({
+    where: { company_id: companyId },
+  });
+  // Don't return password in the response
+  users.forEach(user => {
+    delete user.password;
+  });
+  res.json(users);
+});
+
 app.post('/user', async (req, res) => {
   const { name, email, password } = req.body;
   const companyId = 1
@@ -144,6 +159,22 @@ app.delete('/user/:user_id', authenticateToken, async (req, res) => {
 });
 
 // Category APIs.
+app.get('/category/:category_id', authenticateToken, async (req, res) => {
+  const { category_id } = req.params;
+  const { companyId } = req.user;
+
+  const category = await prisma.category.findUnique({
+    where: { id: parseInt(category_id) },
+    include: { transactions: true },
+  });
+
+  if (!category || category.company_id !== companyId) {
+    return res.status(404).send('Category not found');
+  }
+
+  res.json(category);
+});
+
 app.get('/categories', authenticateToken, async (req, res) => {
   const { companyId } = req.user;
   const categories = await prisma.category.findMany({
@@ -152,12 +183,21 @@ app.get('/categories', authenticateToken, async (req, res) => {
   res.json(categories);
 });
 
+app.get('/categories/:type', authenticateToken, async (req, res) => {
+  const { type } = req.params;
+  const { companyId } = req.user;
+  const categories = await prisma.category.findMany({
+    where: { type, company_id: companyId },
+  });
+  res.json(categories);
+});
+
 app.post('/category', authenticateToken, async (req, res) => {
-  const { name } = req.body;
+  const { name, type } = req.body;
   const { companyId } = req.user;
 
   const category = await prisma.category.create({
-    data: { name, company_id: companyId, active: true },
+    data: { name, type, company_id: companyId, active: true },
   });
 
   res.json(category);
@@ -165,35 +205,51 @@ app.post('/category', authenticateToken, async (req, res) => {
 
 app.put('/category/:category_id', authenticateToken, async (req, res) => {
   const { category_id } = req.params;
-  const { name, active } = req.body;
+  const { name, type, active } = req.body;
   const { companyId } = req.user;
 
   const category = await prisma.category.update({
     where: { id: parseInt(category_id) },
-    data: { name, company_id: companyId, active },
+    data: { name, type, company_id: companyId, active: active || true },
   });
 
   res.json(category);
 });
 
 // Transaction APIs.
-app.get('/transactions/:month/:year', authenticateToken, async (req, res) => {
+app.get('/transactions/:year/:month', authenticateToken, async (req, res) => {
+  const includeCategories = req.query.include_categories === 'true';
   const { month, year } = req.params;
   const { companyId } = req.user;
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0);
   const transactions = await prisma.transaction.findMany({
     where: { company_id: companyId, date: { gte: startDate, lte: endDate } },
+    include: includeCategories ? { category: true } : undefined,
+  });
+  res.json(transactions);
+});
+
+app.get('/transactions/:year', authenticateToken, async (req, res) => {
+  const includeCategories = req.query.include_categories === 'true';
+  const { year } = req.params;
+  const { companyId } = req.user;
+  const startDate = new Date(year, 0, 1);
+  const endDate = new Date(year, 11, 31);
+  const transactions = await prisma.transaction.findMany({
+    where: { company_id: companyId, date: { gte: startDate, lte: endDate } },
+    include: includeCategories ? { category: true } : undefined,
   });
   res.json(transactions);
 });
 
 app.post('/transaction', authenticateToken, async (req, res) => {
-  const { description, category_id, value, type } = req.body;
+  const { date, description, category_id, value, type } = req.body;
   const { companyId } = req.user;
 
   const transaction = await prisma.transaction.create({
     data: {
+      date,
       description,
       category_id,
       value,
@@ -216,14 +272,81 @@ app.delete('/transaction/:transaction_id', authenticateToken, async (req, res) =
 
 app.put('/transaction/:transaction_id', authenticateToken, async (req, res) => {
   const { transaction_id } = req.params;
-  const { description, category_id, value, type } = req.body;
+  const { date, description, category_id, value, type } = req.body;
+  const { companyId } = req.user;
 
   const transaction = await prisma.transaction.update({
     where: { id: parseInt(transaction_id) },
-    data: { description, category_id, value, type },
+    data: { 
+      date,
+      description,
+      category_id,
+      value,
+      type,
+      company_id: companyId,
+    },
   });
 
   res.json(transaction);
+});
+
+async function getDashboardData(req, res, period) {
+  const { year, month } = req.params;
+  const { companyId } = req.user;
+
+  const startDate = period === 'month'
+    ? new Date(year, month - 1, 1)
+    : new Date(year, 0, 1);
+
+  const endDate = period === 'month'
+    ? new Date(year, month, 0, 23, 59, 59, 999)
+    : new Date(year, 11, 31, 23, 59, 59, 999);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      company_id: companyId,
+      date: { gte: startDate, lte: endDate },
+    },
+  });
+
+  const totals = {
+    credits: transactions.filter(t => t.type === 'credit').reduce((sum, t) => sum + t.value, 0),
+    debits: transactions.filter(t => t.type === 'debit').reduce((sum, t) => sum + t.value, 0),
+    investments: transactions.filter(t => t.type === 'investment').reduce((sum, t) => sum + t.value, 0),
+  };
+
+  const monthlyData = Array.from({ length: 12 }, (_, i) => {
+    const monthTransactions = transactions.filter(t => new Date(t.date).getMonth() === i);
+    return {
+      name: new Date(2000, i).toLocaleString('default', { month: 'short' }),
+      credits: monthTransactions.filter(t => t.type === 'credit').reduce((sum, t) => sum + t.value, 0),
+      debits: monthTransactions.filter(t => t.type === 'debit').reduce((sum, t) => sum + t.value, 0),
+      investments: monthTransactions.filter(t => t.type === 'investment').reduce((sum, t) => sum + t.value, 0),
+    };
+  });
+
+  const categoryData = {
+    credit: [],
+    debit: [],
+    investment: [],
+  };
+
+  for (const t of transactions) {
+    categoryData[t.type].push({
+      category: t.category_id,
+      value: t.value,
+    });
+  }
+
+  res.json({ totals, monthlyData, categoryData, transactions });
+}
+
+app.get('/dashboard/:year/:month', authenticateToken, async (req, res) => {
+  return getDashboardData(req, res, 'month');
+});
+
+app.get('/dashboard/:year', authenticateToken, async (req, res) => {
+  return getDashboardData(req, res, 'year');
 });
 
 app.listen(3000, () => {

@@ -32,6 +32,7 @@ model User {
 model Category {
   id         Int    @id @default(autoincrement())
   name       String
+  type       String
   company_id Int
   active     Boolean @default(false)
 
